@@ -133,8 +133,8 @@ public class SagaInstance {
         touch();
     }
 
-    public void recordStepSuccess(SagaStep step, String detail) {
-        step.markCompleted(detail);
+    public void recordStepSuccess(SagaStep step, String detail, String externalReference) {
+        step.markCompleted(detail, externalReference);
         touch();
     }
 

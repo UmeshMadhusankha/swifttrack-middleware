@@ -38,8 +38,18 @@ public class SagaStep {
     @Column(name = "step_sequence", nullable = false)
     private int sequence;
 
-    /** Whatever the adapter told us, e.g. an invoice number or an error message. */
+    /** Whatever the adapter told us, e.g. a confirmation note or an error message. */
     private String detail;
+
+    /**
+     * The handle the legacy system gave us for the work it did.
+     *
+     * This is the piece that makes compensation possible. ROS returns a route
+     * id when it plans a route, and the only way to cancel that route later is
+     * to send the id back. If we used it and threw it away, the undo would have
+     * nothing to point at.
+     */
+    private String externalReference;
 
     /** When the outstanding command was sent. Used to detect adapters that never reply. */
     private Instant awaitingReplySince;
@@ -60,9 +70,10 @@ public class SagaStep {
         this.awaitingReplySince = Instant.now();
     }
 
-    void markCompleted(String detail) {
+    void markCompleted(String detail, String externalReference) {
         this.status = StepStatus.COMPLETED;
         this.detail = detail;
+        this.externalReference = externalReference;
         this.awaitingReplySince = null;
     }
 
@@ -117,6 +128,10 @@ public class SagaStep {
 
     public String getDetail() {
         return detail;
+    }
+
+    public String getExternalReference() {
+        return externalReference;
     }
 
     public Instant getAwaitingReplySince() {

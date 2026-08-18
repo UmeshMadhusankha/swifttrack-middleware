@@ -7,11 +7,15 @@ package com.swiftlogistics.sagaorchestrator.messaging.event;
  * saga.step.*, and a reply to "undo the work" arrives on saga.compensation.*.
  *
  * @param step the SagaStepType name, echoed back so we know which step replied
- * @param detail an invoice number, a route id, or an error message
+ * @param detail a human-readable note, or the error message when it failed
+ * @param externalReference the handle the legacy system gave us for the work it
+ *                          just did, such as a route id or an invoice number.
+ *                          Null when the system has nothing to hand back.
  */
 public record StepResult(
         Long orderId,
         String step,
         boolean success,
-        String detail) {
+        String detail,
+        String externalReference) {
 }

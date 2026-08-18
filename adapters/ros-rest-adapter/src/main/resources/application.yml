@@ -1,0 +1,27 @@
+server:
+  port: ${SERVER_PORT:8085}
+
+spring:
+  application:
+    name: ros-rest-adapter
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        default-requeue-rejected: false
+
+ros:
+  # Inside docker-compose this becomes the service name, ros-mock.
+  base-url: ${ROS_BASE_URL:http://localhost:3001}
+  # Kept well under the orchestrator's step timeout so this adapter reports a
+  # slow ROS itself rather than leaving the watchdog to notice the silence.
+  connect-timeout-ms: ${ROS_CONNECT_TIMEOUT_MS:5000}
+  response-timeout-ms: ${ROS_RESPONSE_TIMEOUT_MS:10000}
+
+logging:
+  level:
+    com.swiftlogistics: DEBUG

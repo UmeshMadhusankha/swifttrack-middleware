@@ -1,0 +1,29 @@
+server:
+  port: ${SERVER_PORT:8083}
+
+spring:
+  application:
+    name: wms-tcp-adapter
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        default-requeue-rejected: false
+
+wms:
+  # Inside docker-compose this becomes the service name, wms-mock.
+  host: ${WMS_HOST:localhost}
+  port: ${WMS_PORT:9090}
+  # Both timeouts must stay comfortably below the orchestrator's step timeout,
+  # so that this adapter reports the failure itself instead of the watchdog
+  # having to notice the silence.
+  connect-timeout-ms: ${WMS_CONNECT_TIMEOUT_MS:5000}
+  read-timeout-ms: ${WMS_READ_TIMEOUT_MS:10000}
+
+logging:
+  level:
+    com.swiftlogistics: DEBUG

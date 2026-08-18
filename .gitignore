@@ -1,32 +1,69 @@
+# ---------------------------------------------------------------
 # Java / Maven
+# ---------------------------------------------------------------
 target/
+*.class
 *.jar
 *.war
+# The Maven Wrapper is committed on purpose: it lets anyone build with
+# ./mvnw without installing Maven first. This must stay AFTER *.jar,
+# because the last matching rule wins.
 !.mvn/wrapper/maven-wrapper.jar
-.mvn/
 
-# Node / Next.js
+# ---------------------------------------------------------------
+# Node / Next.js  (mocks and the frontend portal)
+# ---------------------------------------------------------------
 node_modules/
 .next/
 out/
+.eslintcache
+coverage/
+*.tsbuildinfo
+next-env.d.ts
 npm-debug.log*
+yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+# package-lock.json is deliberately NOT ignored — it pins exact dependency
+# versions so every machine resolves the same tree.
 
-# C++ build output
+# ---------------------------------------------------------------
+# C++ (legacy WMS daemon)
+# ---------------------------------------------------------------
 build/
 cmake-build-*/
+# Litter from an in-source `cmake .` instead of an out-of-source build
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
 *.o
+*.a
+*.so
+*.dylib
 *.exe
+*.dSYM/
 
+# ---------------------------------------------------------------
 # IDEs
+# ---------------------------------------------------------------
 .idea/
 *.iml
+*.iws
 .vscode/
 .settings/
 .classpath
 .project
 
+# ---------------------------------------------------------------
 # Environment and OS
+# ---------------------------------------------------------------
 .env
 .env.local
+.env.*.local
+.env.production
+# A committed template with dummy values is useful; real secrets are not.
+!.env.example
+*.log
 .DS_Store
+Thumbs.db

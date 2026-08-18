@@ -58,6 +58,7 @@ public class SagaMessenger {
                 saga.getClientId(),
                 saga.getRecipientName(),
                 saga.getDeliveryAddress(),
-                saga.getPackageDescription());
+                saga.getPackageDescription(),
+                step.getExternalReference());
     }
 }

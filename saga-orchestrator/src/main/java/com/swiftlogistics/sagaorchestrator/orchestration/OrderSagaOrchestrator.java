@@ -92,7 +92,7 @@ public class OrderSagaOrchestrator {
         }
 
         if (result.success()) {
-            saga.recordStepSuccess(step, result.detail());
+            saga.recordStepSuccess(step, result.detail(), result.externalReference());
             log.info("Order {}: step {} succeeded", saga.getOrderId(), step.getType());
             messenger.announceOrderStatus(
                     saga.getOrderId(), step.getType().successOrderStatus(), result.detail());
