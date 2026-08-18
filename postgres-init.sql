@@ -5,3 +5,4 @@
 -- versa; separate databases make that a hard boundary instead of a convention.
 CREATE DATABASE swifttrack_orders;
 CREATE DATABASE swifttrack_saga;
+CREATE DATABASE swifttrack_auth;

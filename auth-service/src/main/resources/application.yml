@@ -1,0 +1,36 @@
+server:
+  port: ${SERVER_PORT:8086}
+
+spring:
+  application:
+    name: auth-service
+
+  datasource:
+    # 5433 is the host port docker-compose publishes Postgres on. Inside the
+    # compose network this whole URL is overridden with the postgres:5432 form.
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/swifttrack_auth}
+    username: ${DB_USERNAME:swifttrack}
+    password: ${DB_PASSWORD:swifttrack}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+jwt:
+  # Must be at least 32 bytes for HS256, and must match whatever the API
+  # gateway is given, since the gateway verifies these tokens with the same key.
+  secret: ${JWT_SECRET:swifttrack-local-development-secret-key-change-me}
+  issuer: ${JWT_ISSUER:swifttrack-auth}
+  expiry-minutes: ${JWT_EXPIRY_MINUTES:60}
+
+auth:
+  # The prototype's single test account, created on startup if it is missing.
+  seed-user:
+    username: ${SEED_USERNAME:acme-corp}
+    password: ${SEED_PASSWORD:swift1234}
+    role: ${SEED_ROLE:CLIENT}
+
+logging:
+  level:
+    com.swiftlogistics: DEBUG
