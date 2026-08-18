@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Contract for the legacy Client Management System.
+
+  A WSDL is a machine-readable description of a SOAP service: it lists the
+  operations, the exact XML each one expects, and the XML it sends back. A
+  client can generate working code straight from this file, which is how the
+  CMS adapter will be built.
+
+  Two operations:
+    SubmitOrder   - register an order and raise an invoice
+    CancelBilling - void that invoice again (the compensating action)
+-->
+<definitions name="CmsService"
+             targetNamespace="http://swiftlogistics.com/cms"
+             xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:tns="http://swiftlogistics.com/cms"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/">
+
+  <types>
+    <xsd:schema targetNamespace="http://swiftlogistics.com/cms"
+                elementFormDefault="qualified">
+
+      <xsd:element name="SubmitOrderRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="orderId" type="xsd:long"/>
+            <xsd:element name="clientId" type="xsd:string"/>
+            <xsd:element name="recipientName" type="xsd:string"/>
+            <xsd:element name="deliveryAddress" type="xsd:string"/>
+            <xsd:element name="packageDescription" type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="SubmitOrderResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="status" type="xsd:string"/>
+            <xsd:element name="invoiceNumber" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="message" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="CancelBillingRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="orderId" type="xsd:long"/>
+            <xsd:element name="invoiceNumber" type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="CancelBillingResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="status" type="xsd:string"/>
+            <xsd:element name="message" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+    </xsd:schema>
+  </types>
+
+  <message name="SubmitOrderRequestMessage">
+    <part name="parameters" element="tns:SubmitOrderRequest"/>
+  </message>
+  <message name="SubmitOrderResponseMessage">
+    <part name="parameters" element="tns:SubmitOrderResponse"/>
+  </message>
+  <message name="CancelBillingRequestMessage">
+    <part name="parameters" element="tns:CancelBillingRequest"/>
+  </message>
+  <message name="CancelBillingResponseMessage">
+    <part name="parameters" element="tns:CancelBillingResponse"/>
+  </message>
+
+  <portType name="CmsPortType">
+    <operation name="SubmitOrder">
+      <input message="tns:SubmitOrderRequestMessage"/>
+      <output message="tns:SubmitOrderResponseMessage"/>
+    </operation>
+    <operation name="CancelBilling">
+      <input message="tns:CancelBillingRequestMessage"/>
+      <output message="tns:CancelBillingResponseMessage"/>
+    </operation>
+  </portType>
+
+  <binding name="CmsBinding" type="tns:CmsPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+    <operation name="SubmitOrder">
+      <soap:operation soapAction="http://swiftlogistics.com/cms/SubmitOrder"/>
+      <input><soap:body use="literal"/></input>
+      <output><soap:body use="literal"/></output>
+    </operation>
+
+    <operation name="CancelBilling">
+      <soap:operation soapAction="http://swiftlogistics.com/cms/CancelBilling"/>
+      <input><soap:body use="literal"/></input>
+      <output><soap:body use="literal"/></output>
+    </operation>
+  </binding>
+
+  <service name="CmsService">
+    <port name="CmsPort" binding="tns:CmsBinding">
+      <soap:address location="http://localhost:3002/cms"/>
+    </port>
+  </service>
+
+</definitions>

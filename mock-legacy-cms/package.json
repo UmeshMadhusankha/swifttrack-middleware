@@ -1,0 +1,15 @@
+{
+  "name": "mock-legacy-cms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stand-in for the SwiftLogistics Client Management System (SOAP/XML)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "soap": "^1.0.0"
+  }
+}
