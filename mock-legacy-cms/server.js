@@ -23,7 +23,20 @@ const express = require('express');
 const soap = require('soap');
 
 const PORT = Number(process.env.CMS_PORT) || 3002;
-const WSDL_XML = fs.readFileSync(path.join(__dirname, 'cms.wsdl'), 'utf8');
+
+/**
+ * Where clients should be told this service lives.
+ *
+ * A WSDL carries its own address in <soap:address location="...">, and a
+ * generated client will call whatever it finds there. Inside Docker the host
+ * name is cms-mock, not localhost, so the address is rewritten at startup
+ * rather than hardcoded in the file.
+ */
+const PUBLIC_URL = process.env.CMS_PUBLIC_URL || `http://localhost:${PORT}`;
+
+const WSDL_XML = fs
+  .readFileSync(path.join(__dirname, 'cms.wsdl'), 'utf8')
+  .replace('http://localhost:3002/cms', `${PUBLIC_URL}/cms`);
 
 const isEnabled = (value) => ['1', 'true', 'yes'].includes(String(value).toLowerCase());
 
@@ -151,7 +164,7 @@ app.post('/control/force-failure', express.json(), (req, res) => {
 
 const server = app.listen(PORT, () => {
   console.log(`Mock CMS (SOAP/XML) listening on http://localhost:${PORT}`);
-  console.log(`CMS: WSDL at http://localhost:${PORT}/cms?wsdl`);
+  console.log(`CMS: WSDL at ${PUBLIC_URL}/cms?wsdl`);
   if (forceFailure) {
     console.warn('CMS: started with SubmitOrder failure ON');
   }

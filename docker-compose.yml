@@ -1,0 +1,145 @@
+# SwiftLogistics middleware — infrastructure and legacy-system stand-ins.
+#
+# `docker compose up` starts the message broker, the database and all three
+# mock legacy systems as one stack. The Order Service, SAGA Orchestrator and the
+# adapters will be added to this same file once they exist.
+
+name: swifttrack
+
+services:
+
+  # ------------------------------------------------------------------
+  # Infrastructure
+  # ------------------------------------------------------------------
+
+  # The message broker every service talks through.
+  # Management UI: http://localhost:15672  (guest / guest)
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: swifttrack-rabbitmq
+    ports:
+      - "5672:5672"      # AMQP, used by the services
+      - "15672:15672"    # web UI, used by you
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  # Holds the orders table and the saga tables, in two separate databases.
+  postgres:
+    image: postgres:16-alpine
+    container_name: swifttrack-postgres
+    ports:
+      # Published on 5433 because another project on this machine already owns
+      # 5432. Only the host side moves; inside the network it is still 5432, so
+      # nothing in the services' configuration changes.
+      # Override with DB_PORT=5432 in a .env file if 5432 is free for you.
+      - "${DB_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-swifttrack}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-swifttrack}
+      POSTGRES_DB: swifttrack
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Anything in this folder runs once, when the data volume is first created.
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/01-create-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-swifttrack}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Mock legacy systems
+  # ------------------------------------------------------------------
+
+  # Warehouse Management System: proprietary 24-byte protocol over raw TCP.
+  wms-mock:
+    build: ./legacy-wms-daemon
+    container_name: swifttrack-wms-mock
+    ports:
+      - "9090:9090"
+    environment:
+      WMS_PORT: 9090
+      # Set to true to make every warehouse request fail, which is how the
+      # orchestrator's compensation path gets exercised.
+      WMS_FORCE_FAILURE: ${WMS_FORCE_FAILURE:-false}
+    healthcheck:
+      # A TCP probe would look like a malformed request and clutter the log,
+      # so check that the process is alive instead.
+      test: ["CMD-SHELL", "pgrep wms_server > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  # Route Optimization System: REST over JSON.
+  ros-mock:
+    build: ./mock-legacy-ros
+    container_name: swifttrack-ros-mock
+    ports:
+      - "3001:3001"
+    environment:
+      ROS_PORT: 3001
+      ROS_FORCE_FAILURE: ${ROS_FORCE_FAILURE:-false}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  # Client Management System: SOAP over XML.
+  cms-mock:
+    build: ./mock-legacy-cms
+    container_name: swifttrack-cms-mock
+    ports:
+      - "3002:3002"
+    environment:
+      CMS_PORT: 3002
+      CMS_FORCE_FAILURE: ${CMS_FORCE_FAILURE:-false}
+      CMS_FORCE_CANCEL_FAILURE: ${CMS_FORCE_CANCEL_FAILURE:-false}
+      # The WSDL advertises where the service lives. Left as localhost so you can
+      # test from your machine; switch it to http://cms-mock:3002 once the CMS
+      # adapter runs inside this network and reads the WSDL from in here.
+      # CMS_PUBLIC_URL: http://cms-mock:3002
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+# One private network so the services can reach each other by service name,
+# for example http://ros-mock:3001, without any of them knowing IP addresses.
+networks:
+  swifttrack:
+    driver: bridge
+
+# Named volumes keep the database and broker state across restarts.
+volumes:
+  postgres-data:
+  rabbitmq-data:
