@@ -1,0 +1,32 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/swifttrack_orders}
+    username: ${DB_USERNAME:swifttrack}
+    password: ${DB_PASSWORD:swifttrack}
+
+  jpa:
+    hibernate:
+      # Hibernate creates/updates the tables from the @Entity classes on startup.
+      ddl-auto: update
+    open-in-view: false
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        # A message this service cannot process is dropped rather than
+        # pushed back onto the queue, which would loop forever.
+        default-requeue-rejected: false
+
+logging:
+  level:
+    com.swiftlogistics: DEBUG
