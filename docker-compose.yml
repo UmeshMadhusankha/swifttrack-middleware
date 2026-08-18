@@ -219,6 +219,61 @@ services:
       - swifttrack
     restart: unless-stopped
 
+  # The single front door. Everything from the browser arrives here, and only
+  # this and the portal are reachable from outside the network.
+  gateway-service:
+    build: ./gateway-service
+    container_name: swifttrack-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8086
+      ORDER_SERVICE_URL: http://order-service:8081
+      # Must match the value auth-service signs with, or every token looks forged.
+      JWT_SECRET: ${JWT_SECRET:-swifttrack-local-development-secret-key-change-me}
+      # The browser loads the portal from this origin, so the gateway has to
+      # allow it explicitly or the browser blocks every response.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  # The client portal. This runs in your browser, so the gateway address below
+  # is the one your machine sees, not an in-network service name.
+  frontend-portal:
+    build:
+      context: ./frontend-portal
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+    container_name: swifttrack-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, not localhost: localhost resolves to ::1 first inside the
+      # container and the Next.js server listens on IPv4 only.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
   # ------------------------------------------------------------------
   # Adapters: one per legacy system, each translating messages into that
   # system's native protocol. Note the addresses are service names, not

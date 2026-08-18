@@ -1,0 +1,23 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: gateway-service
+
+gateway:
+  # Where the gateway forwards to. Service names inside docker-compose,
+  # localhost when running the gateway on your own machine.
+  auth-service-url: ${AUTH_SERVICE_URL:http://localhost:8086}
+  order-service-url: ${ORDER_SERVICE_URL:http://localhost:8081}
+  # Browser origins allowed to call this gateway. The frontend runs on a
+  # different port, which makes every call cross-origin.
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
+
+jwt:
+  # Must be the exact value auth-service signs with, or every token looks forged.
+  secret: ${JWT_SECRET:swifttrack-local-development-secret-key-change-me}
+
+logging:
+  level:
+    com.swiftlogistics: DEBUG
