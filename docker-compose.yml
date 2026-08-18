@@ -119,16 +119,149 @@ services:
       CMS_PORT: 3002
       CMS_FORCE_FAILURE: ${CMS_FORCE_FAILURE:-false}
       CMS_FORCE_CANCEL_FAILURE: ${CMS_FORCE_CANCEL_FAILURE:-false}
-      # The WSDL advertises where the service lives. Left as localhost so you can
-      # test from your machine; switch it to http://cms-mock:3002 once the CMS
-      # adapter runs inside this network and reads the WSDL from in here.
-      # CMS_PUBLIC_URL: http://cms-mock:3002
+      # The WSDL advertises where the service lives. The CMS adapter now runs
+      # inside this network, so the address has to be the service name. A
+      # client reading "localhost" from in here would call itself.
+      CMS_PUBLIC_URL: http://cms-mock:3002
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Middleware services
+  # ------------------------------------------------------------------
+
+  # Accepts orders over HTTP and tracks their status.
+  order-service:
+    build: ./order-service
+    container_name: swifttrack-order-service
+    ports:
+      - "8081:8081"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/swifttrack_orders
+      DB_USERNAME: ${DB_USERNAME:-swifttrack}
+      DB_PASSWORD: ${DB_PASSWORD:-swifttrack}
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  # Drives CMS then WMS then ROS, and unwinds them in reverse on failure.
+  saga-orchestrator:
+    build: ./saga-orchestrator
+    container_name: swifttrack-saga-orchestrator
+    ports:
+      - "8082:8082"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/swifttrack_saga
+      DB_USERNAME: ${DB_USERNAME:-swifttrack}
+      DB_PASSWORD: ${DB_PASSWORD:-swifttrack}
+      RABBITMQ_HOST: rabbitmq
+      SAGA_STEP_TIMEOUT_SECONDS: ${SAGA_STEP_TIMEOUT_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Adapters: one per legacy system, each translating messages into that
+  # system's native protocol. Note the addresses are service names, not
+  # localhost: inside a container, localhost means the container itself.
+  # ------------------------------------------------------------------
+
+  cms-adapter:
+    build: ./adapters/cms-soap-adapter
+    container_name: swifttrack-cms-adapter
+    ports:
+      - "8084:8084"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      CMS_ENDPOINT: http://cms-mock:3002/cms
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cms-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8084/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  wms-adapter:
+    build: ./adapters/wms-tcp-adapter
+    container_name: swifttrack-wms-adapter
+    ports:
+      - "8083:8083"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      WMS_HOST: wms-mock
+      WMS_PORT: 9090
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      wms-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8083/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - swifttrack
+    restart: unless-stopped
+
+  ros-adapter:
+    build: ./adapters/ros-rest-adapter
+    container_name: swifttrack-ros-adapter
+    ports:
+      - "8085:8085"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      ROS_BASE_URL: http://ros-mock:3001
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      ros-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8085/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     networks:
       - swifttrack
     restart: unless-stopped
