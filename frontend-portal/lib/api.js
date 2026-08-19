@@ -8,7 +8,7 @@
  * really belongs. That is the whole benefit of putting a gateway in front.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
 
 const TOKEN_KEY = 'swifttrack.token';
 const USER_KEY = 'swifttrack.user';

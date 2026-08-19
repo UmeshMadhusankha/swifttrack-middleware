@@ -25,11 +25,15 @@ jwt:
   expiry-minutes: ${JWT_EXPIRY_MINUTES:60}
 
 auth:
-  # The prototype's single test account, created on startup if it is missing.
+  # The prototype's test accounts, created on startup if missing.
   seed-user:
     username: ${SEED_USERNAME:acme-corp}
     password: ${SEED_PASSWORD:swift1234}
     role: ${SEED_ROLE:CLIENT}
+  seed-driver:
+    username: ${SEED_DRIVER_USERNAME:driver-01}
+    password: ${SEED_DRIVER_PASSWORD:driver1234}
+    role: ${SEED_DRIVER_ROLE:DRIVER}
 
 logging:
   level:

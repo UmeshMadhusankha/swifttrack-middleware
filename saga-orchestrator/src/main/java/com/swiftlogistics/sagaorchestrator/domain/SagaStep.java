@@ -137,4 +137,8 @@ public class SagaStep {
     public Instant getAwaitingReplySince() {
         return awaitingReplySince;
     }
+
+    public Instant getCompletedAt() {
+        return null;
+    }
 }

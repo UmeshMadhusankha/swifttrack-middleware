@@ -10,6 +10,7 @@ gateway:
   # localhost when running the gateway on your own machine.
   auth-service-url: ${AUTH_SERVICE_URL:http://localhost:8086}
   order-service-url: ${ORDER_SERVICE_URL:http://localhost:8081}
+  saga-orchestrator-url: ${SAGA_ORCHESTRATOR_URL:http://localhost:8082}
   # Browser origins allowed to call this gateway. The frontend runs on a
   # different port, which makes every call cross-origin.
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}

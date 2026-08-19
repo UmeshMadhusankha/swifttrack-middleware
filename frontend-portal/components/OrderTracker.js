@@ -57,7 +57,7 @@ export default function OrderTracker({ order }) {
       {order.statusDetail && <div className="status-note">{order.statusDetail}</div>}
 
       {!isFinished(order.status) && (
-        <p className="poll-note">Refreshing every 2 seconds…</p>
+        <p className="poll-note">Connected — updates arrive in real time</p>
       )}
     </div>
   );

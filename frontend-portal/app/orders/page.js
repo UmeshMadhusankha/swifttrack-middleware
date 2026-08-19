@@ -5,12 +5,10 @@ import { useRouter } from 'next/navigation';
 import OrderTracker from '../../components/OrderTracker';
 import { isFinished } from '../../lib/orderStages';
 import {
-  clearSession, fetchMyOrders, fetchOrder, getToken, getUser, submitOrder,
+  API_BASE_URL, clearSession, fetchMyOrders, fetchOrder, getToken, getUser, submitOrder,
 } from '../../lib/api';
 
-const POLL_INTERVAL_MS = 2000;
-
-/** Submit an order, then watch it travel through the middleware. */
+/** Submit an order, then watch it travel through the middleware via WebSockets. */
 export default function OrdersPage() {
   const router = useRouter();
 
@@ -43,12 +41,8 @@ export default function OrdersPage() {
   }, [user, loadHistory]);
 
   /**
-   * Polls the order until it reaches a final state.
-   *
-   * Polling is deliberately simple: the frontend asks the order service for the
-   * current row every couple of seconds. It never touches RabbitMQ. All the
-   * event-driven machinery is behind the gateway, and the UI only ever sees the
-   * latest status the orchestrator wrote down.
+   * Connects via WebSocket to receive real-time updates as the SAGA orchestrator
+   * pushes events to RabbitMQ.
    */
   useEffect(() => {
     if (!tracked || isFinished(tracked.status)) {
@@ -56,15 +50,24 @@ export default function OrdersPage() {
       return;
     }
 
-    const timer = setInterval(async () => {
-      try {
-        setTracked(await fetchOrder(tracked.id));
-      } catch (err) {
-        setError(err.message);
-      }
-    }, POLL_INTERVAL_MS);
+    const wsUrl = `${API_BASE_URL.replace('http://', 'ws://')}/ws/orders/${tracked.id}`;
+    const ws = new WebSocket(wsUrl);
 
-    return () => clearInterval(timer);
+    ws.onmessage = (event) => {
+      try {
+        const update = JSON.parse(event.data);
+        setTracked(prev => prev ? { ...prev, ...update } : prev);
+      } catch {
+        // Ignore malformed messages.
+      }
+    };
+
+    ws.onerror = () => {
+      // Fall back to a single re-fetch if WebSocket fails.
+      fetchOrder(tracked.id).then(setTracked).catch(() => {});
+    };
+
+    return () => ws.close();
   }, [tracked, loadHistory]);
 
   async function handleSubmit(event) {
