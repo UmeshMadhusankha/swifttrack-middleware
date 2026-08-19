@@ -24,6 +24,7 @@ Middleware solution for integrating three legacy systems of **SwiftLogistics**, 
   - [Running Services Individually](#running-services-individually)
 - [Environment Variables](#environment-variables)
 - [API Reference](#api-reference)
+- [Seeing RabbitMQ Work](#seeing-rabbitmq-work)
 - [Message Flow (RabbitMQ)](#message-flow-rabbitmq)
 - [Order Lifecycle](#order-lifecycle)
 - [Database Schema](#database-schema)
@@ -689,6 +690,90 @@ yet.
 
 ---
 
+## Seeing RabbitMQ Work
+
+A healthy broker looks like nothing at all: every queue sits at zero because
+consumers drain messages the instant they arrive. These are the ways to show
+that the messaging actually happened.
+
+### The Management UI
+
+    http://localhost:15672      guest / guest
+
+Published on `127.0.0.1` only, so it is reachable from this machine and never
+from the network. It exposes the management UI alone — the AMQP port that
+carries the actual messages stays unpublished.
+
+Worth showing, in this order:
+
+| Tab | What it proves |
+|-----|----------------|
+| **Exchanges** | `swifttrack.commands` and `swifttrack.events`, both topic exchanges |
+| **Exchanges → swifttrack.events → Bindings** | the routing rules, including the `saga.step.*` wildcard |
+| **Queues** | ten queues, each with exactly 1 consumer — every service is attached |
+| **Overview → Message rates** | the graph spikes the moment an order is submitted |
+
+Submit an order from the client dashboard with the Overview graph on screen and
+the spike is immediate.
+
+### The demo script
+
+    ./scripts/rabbitmq-demo.sh topology    exchanges, queues and bindings
+    ./scripts/rabbitmq-demo.sh test        place an order, prove each hop carried it
+    ./scripts/rabbitmq-demo.sh watch       live queue depths, refreshing
+    ./scripts/rabbitmq-demo.sh tap-on      start capturing a copy of every message
+    ./scripts/rabbitmq-demo.sh messages    print the captured messages with payloads
+    ./scripts/rabbitmq-demo.sh tap-off     stop capturing and delete the tap
+
+`test` snapshots every queue's delivery counter, submits one order, waits for
+the saga to finish, and prints the difference. A successful order moves exactly
+**12 messages**:
+
+| Queue | Messages | Why |
+|-------|----------|-----|
+| `saga.order-created.q` | 1 | the orchestrator is told an order exists |
+| `cms.commands.q` | 1 | CMS is told to bill it |
+| `wms.commands.q` | 1 | WMS is told to reserve stock |
+| `ros.commands.q` | 1 | ROS is told to plan a route |
+| `saga.step-results.q` | 3 | all three adapters reply |
+| `order.status.q` | 5 | PROCESSING, BILLED, STOCK_RESERVED, ROUTE_PLANNED, COMPLETED |
+
+### Showing the actual message contents
+
+`tap-on` declares a temporary queue bound to `#` on both exchanges, so it
+receives a *copy* of every message while taking nothing away from the real
+consumers. It holds at most 200 messages and drops them after 30 minutes, so it
+cannot grow without bound; `tap-off` deletes it.
+
+    ./scripts/rabbitmq-demo.sh tap-on
+    # submit an order from the client dashboard
+    ./scripts/rabbitmq-demo.sh messages
+
+The captured messages tell the whole SAGA in order — `order.created`,
+`cms.billing.create`, `saga.step.completed`, `order.status.changed`, and so on.
+Re-running `messages` shows the same capture again; nothing is consumed.
+
+### Showing the rollback
+
+The compensation path is the most convincing thing the broker can show, because
+it is the part no single database transaction could do:
+
+    ./scripts/rabbitmq-demo.sh tap-on
+    WMS_FORCE_FAILURE=true docker compose up -d wms-mock
+    # submit an order from the client dashboard
+    ./scripts/rabbitmq-demo.sh messages
+
+The capture shows CMS succeeding, WMS refusing, and then `cms.billing.cancel`
+going back out to undo the invoice that had already been raised — followed by
+`saga.compensation.completed` confirming it was cancelled.
+
+Put it back afterwards:
+
+    docker compose up -d wms-mock
+    ./scripts/rabbitmq-demo.sh tap-off
+
+---
+
 ## Message Flow (RabbitMQ)
 
 The middleware uses two topic exchanges:
@@ -805,20 +890,46 @@ curl http://localhost:3002/control/invoices
 
 ## Useful URLs
 
+### Reachable from your browser
+
+Only three ports are published to the host. That is the design: the gateway is
+the single way in, so its JWT check cannot be walked around.
+
 | URL | Description |
 |-----|-------------|
-| [http://localhost:3000](http://localhost:3000) | Frontend Portal (login & order management) |
+| [http://localhost:3000](http://localhost:3000) | Frontend Portal (login and dashboards) |
 | [http://localhost:8080](http://localhost:8080) | API Gateway |
 | [http://localhost:15672](http://localhost:15672) | RabbitMQ Management UI (`guest` / `guest`) |
-| [http://localhost:8081/actuator/health](http://localhost:8081/actuator/health) | Order Service health |
-| [http://localhost:8082/actuator/health](http://localhost:8082/actuator/health) | SAGA Orchestrator health |
-| [http://localhost:8083/actuator/health](http://localhost:8083/actuator/health) | WMS Adapter health |
-| [http://localhost:8084/actuator/health](http://localhost:8084/actuator/health) | CMS Adapter health |
-| [http://localhost:8085/actuator/health](http://localhost:8085/actuator/health) | ROS Adapter health |
-| [http://localhost:8086/actuator/health](http://localhost:8086/actuator/health) | Auth Service health |
-| [http://localhost:3001/health](http://localhost:3001/health) | Mock ROS health |
-| [http://localhost:3002/health](http://localhost:3002/health) | Mock CMS health |
-| [http://localhost:3002/cms?wsdl](http://localhost:3002/cms?wsdl) | CMS WSDL contract |
+
+### Reachable only from inside the compose network
+
+Every other service is deliberately unpublished, so these addresses do **not**
+work in a browser. Reach them through a container instead:
+
+```bash
+docker compose exec gateway-service curl -s http://order-service:8081/actuator/health
+```
+
+| Address | Description |
+|---------|-------------|
+| `http://order-service:8081/actuator/health` | Order Service health |
+| `http://saga-orchestrator:8082/actuator/health` | SAGA Orchestrator health |
+| `http://wms-adapter:8083/actuator/health` | WMS Adapter health |
+| `http://cms-adapter:8084/actuator/health` | CMS Adapter health |
+| `http://ros-adapter:8085/actuator/health` | ROS Adapter health |
+| `http://auth-service:8086/actuator/health` | Auth Service health |
+| `http://ros-mock:3001/health` | Mock ROS health |
+| `http://cms-mock:3002/health` | Mock CMS health |
+| `http://cms-mock:3002/cms?wsdl` | CMS WSDL contract |
+
+To check every service at once:
+
+```bash
+docker compose ps
+```
+
+Each row's `STATUS` column reads `(healthy)` once that service's own
+healthcheck passes, which runs the same probes listed above.
 
 ---
 

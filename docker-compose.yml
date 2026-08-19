@@ -3,10 +3,14 @@
 # `docker compose up` starts the whole system: broker, database, the three mock
 # legacy systems, the middleware services and the client portal.
 #
-# Only gateway-service and frontend-portal publish a port to the host. Everything
-# else is reachable solely from inside the swifttrack network, so the gateway is
-# the only way in and its JWT check cannot be walked around. Do not add `ports:`
-# to another service without meaning to open that hole.
+# Only gateway-service and frontend-portal publish an application port to the
+# host. Everything else is reachable solely from inside the swifttrack network,
+# so the gateway is the only way in and its JWT check cannot be walked around.
+# Do not add `ports:` to another service without meaning to open that hole.
+#
+# The one exception is RabbitMQ's management UI, published on 127.0.0.1 only so
+# the broker can be inspected during a demo. It carries no application traffic:
+# the AMQP port it actually carries messages on is still unpublished.
 
 name: swifttrack
 
@@ -21,6 +25,15 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: swifttrack-rabbitmq
+    ports:
+      # The management UI, so the broker can be shown working: exchanges,
+      # queues, bindings and live message rates. Bound to 127.0.0.1 rather
+      # than 0.0.0.0 so it is reachable from this machine only and never from
+      # the network — the guest account would otherwise be an open door.
+      #
+      # Note this publishes only the UI. The AMQP port (5672) stays unpublished,
+      # so nothing outside the compose network can send or read messages.
+      - "127.0.0.1:15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
