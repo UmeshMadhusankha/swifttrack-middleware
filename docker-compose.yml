@@ -1,8 +1,12 @@
 # SwiftLogistics middleware — infrastructure and legacy-system stand-ins.
 #
-# `docker compose up` starts the message broker, the database and all three
-# mock legacy systems as one stack. The Order Service, SAGA Orchestrator and the
-# adapters will be added to this same file once they exist.
+# `docker compose up` starts the whole system: broker, database, the three mock
+# legacy systems, the middleware services and the client portal.
+#
+# Only gateway-service and frontend-portal publish a port to the host. Everything
+# else is reachable solely from inside the swifttrack network, so the gateway is
+# the only way in and its JWT check cannot be walked around. Do not add `ports:`
+# to another service without meaning to open that hole.
 
 name: swifttrack
 
@@ -17,9 +21,6 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: swifttrack-rabbitmq
-    ports:
-      - "5672:5672"      # AMQP, used by the services
-      - "15672:15672"    # web UI, used by you
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
@@ -39,12 +40,6 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: swifttrack-postgres
-    ports:
-      # Published on 5433 because another project on this machine already owns
-      # 5432. Only the host side moves; inside the network it is still 5432, so
-      # nothing in the services' configuration changes.
-      # Override with DB_PORT=5432 in a .env file if 5432 is free for you.
-      - "${DB_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: ${DB_USERNAME:-swifttrack}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-swifttrack}
@@ -71,8 +66,6 @@ services:
   wms-mock:
     build: ./legacy-wms-daemon
     container_name: swifttrack-wms-mock
-    ports:
-      - "9090:9090"
     environment:
       WMS_PORT: 9090
       # Set to true to make every warehouse request fail, which is how the
@@ -94,8 +87,6 @@ services:
   ros-mock:
     build: ./mock-legacy-ros
     container_name: swifttrack-ros-mock
-    ports:
-      - "3001:3001"
     environment:
       ROS_PORT: 3001
       ROS_FORCE_FAILURE: ${ROS_FORCE_FAILURE:-false}
@@ -113,8 +104,6 @@ services:
   cms-mock:
     build: ./mock-legacy-cms
     container_name: swifttrack-cms-mock
-    ports:
-      - "3002:3002"
     environment:
       CMS_PORT: 3002
       CMS_FORCE_FAILURE: ${CMS_FORCE_FAILURE:-false}
@@ -141,8 +130,6 @@ services:
   order-service:
     build: ./order-service
     container_name: swifttrack-order-service
-    ports:
-      - "8081:8081"
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/swifttrack_orders
       DB_USERNAME: ${DB_USERNAME:-swifttrack}
@@ -167,8 +154,6 @@ services:
   saga-orchestrator:
     build: ./saga-orchestrator
     container_name: swifttrack-saga-orchestrator
-    ports:
-      - "8082:8082"
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/swifttrack_saga
       DB_USERNAME: ${DB_USERNAME:-swifttrack}
@@ -196,8 +181,6 @@ services:
   auth-service:
     build: ./auth-service
     container_name: swifttrack-auth-service
-    ports:
-      - "8086:8086"
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/swifttrack_auth
       DB_USERNAME: ${DB_USERNAME:-swifttrack}
@@ -283,8 +266,6 @@ services:
   cms-adapter:
     build: ./adapters/cms-soap-adapter
     container_name: swifttrack-cms-adapter
-    ports:
-      - "8084:8084"
     environment:
       RABBITMQ_HOST: rabbitmq
       CMS_ENDPOINT: http://cms-mock:3002/cms
@@ -306,8 +287,6 @@ services:
   wms-adapter:
     build: ./adapters/wms-tcp-adapter
     container_name: swifttrack-wms-adapter
-    ports:
-      - "8083:8083"
     environment:
       RABBITMQ_HOST: rabbitmq
       WMS_HOST: wms-mock
@@ -330,8 +309,6 @@ services:
   ros-adapter:
     build: ./adapters/ros-rest-adapter
     container_name: swifttrack-ros-adapter
-    ports:
-      - "8085:8085"
     environment:
       RABBITMQ_HOST: rabbitmq
       ROS_BASE_URL: http://ros-mock:3001

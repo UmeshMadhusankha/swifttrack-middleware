@@ -78,10 +78,15 @@ public class OrderService {
         return orderRepository.findById(orderId);
     }
 
+    /**
+     * Every order belonging to one client.
+     *
+     * There is deliberately no way to ask for "all orders". A single method
+     * that returns everything when its argument happens to be null is the kind
+     * of thing one forgetful caller turns into a data leak.
+     */
     @Transactional(readOnly = true)
     public List<Order> findForClient(String clientId) {
-        return clientId == null
-                ? orderRepository.findAllByOrderByCreatedAtDesc()
-                : orderRepository.findByClientIdOrderByCreatedAtDesc(clientId);
+        return orderRepository.findByClientIdOrderByCreatedAtDesc(clientId);
     }
 }

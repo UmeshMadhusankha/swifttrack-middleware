@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -54,8 +53,17 @@ public class OrderController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /**
+     * Lists only the calling client's own orders.
+     *
+     * The client id comes from the same gateway-set header as on create, never
+     * from a query parameter. Letting the caller name the client they wanted
+     * would mean anyone could read anyone else's orders just by asking.
+     */
     @GetMapping
-    public List<OrderResponse> listOrders(@RequestParam(required = false) String clientId) {
+    public List<OrderResponse> listOrders(
+            @RequestHeader(value = "X-Client-Id", defaultValue = "anonymous") String clientId) {
+
         return orderService.findForClient(clientId).stream()
                 .map(OrderResponse::from)
                 .toList();
