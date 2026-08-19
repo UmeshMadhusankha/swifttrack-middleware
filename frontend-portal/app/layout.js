@@ -1,8 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'SwiftLogistics Portal',
-  description: 'Submit a delivery order and follow it through the middleware',
+  title: 'SwiftTrack Portal',
+  description: 'Submit delivery orders and watch them move through the SwiftLogistics middleware',
 };
 
 export default function RootLayout({ children }) {

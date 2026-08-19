@@ -51,7 +51,13 @@ public class RouteConfig {
                         .uri(authServiceUrl))
 
                 // Protected. The filter rejects anything without a valid token
-                // before the request ever reaches order-service.
+                // before the request ever reaches order-service, and stamps the
+                // caller's username and role onto the request as headers. This
+                // one path covers every order endpoint, including the admin
+                // /api/orders/all listing and the driver's PATCH of
+                // /api/orders/{id}/delivery-status; those two check the role
+                // header themselves, since the gateway only proves who you are,
+                // not what you may do.
                 .route("orders", route -> route
                         .path("/api/orders/**")
                         .filters(f -> f.filter(jwtFilter.filter()))

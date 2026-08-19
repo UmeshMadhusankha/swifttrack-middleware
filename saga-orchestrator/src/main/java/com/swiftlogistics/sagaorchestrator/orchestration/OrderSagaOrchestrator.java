@@ -62,7 +62,7 @@ public class OrderSagaOrchestrator {
                 event.packageDescription()));
 
         log.info("Order {}: saga started", saga.getOrderId());
-        messenger.announceOrderStatus(saga.getOrderId(), "PROCESSING", "Order accepted by the middleware");
+        messenger.announceOrderStatus(saga, "PROCESSING", "Order accepted by the middleware");
 
         sendNextStep(saga);
     }
@@ -95,7 +95,7 @@ public class OrderSagaOrchestrator {
             saga.recordStepSuccess(step, result.detail(), result.externalReference());
             log.info("Order {}: step {} succeeded", saga.getOrderId(), step.getType());
             messenger.announceOrderStatus(
-                    saga.getOrderId(), step.getType().successOrderStatus(), result.detail());
+                    saga, step.getType().successOrderStatus(), result.detail());
             sendNextStep(saga);
         } else {
             beginCompensation(saga, step, result.detail());
@@ -184,7 +184,7 @@ public class OrderSagaOrchestrator {
         if (next.isEmpty()) {
             saga.markCompleted();
             log.info("Order {}: saga completed, all three systems succeeded", saga.getOrderId());
-            messenger.announceOrderStatus(saga.getOrderId(), "COMPLETED", "Order is ready for delivery");
+            messenger.announceOrderStatus(saga, "COMPLETED", "Order is ready for delivery");
             return;
         }
 
@@ -199,7 +199,7 @@ public class OrderSagaOrchestrator {
         log.error("Order {}: step {} failed ({}), compensating",
                 saga.getOrderId(), failedStep.getType(), reason);
 
-        messenger.announceOrderStatus(saga.getOrderId(), "COMPENSATING",
+        messenger.announceOrderStatus(saga, "COMPENSATING",
                 "Undoing completed steps: " + reason);
 
         compensateNextStep(saga);
@@ -219,7 +219,7 @@ public class OrderSagaOrchestrator {
             saga.markCompensationFinished();
             log.warn("Order {}: saga finished as {} after compensation",
                     saga.getOrderId(), saga.getState());
-            messenger.announceOrderStatus(saga.getOrderId(), "FAILED", saga.getFailureReason());
+            messenger.announceOrderStatus(saga, "FAILED", saga.getFailureReason());
             return;
         }
 

@@ -1,15 +1,18 @@
 package com.swiftlogistics.orderservice.api.dto;
 
 import com.swiftlogistics.orderservice.domain.Order;
+import com.swiftlogistics.orderservice.domain.SagaProgress;
 import java.time.Instant;
 
 /**
- * What the frontend sees.
+ * One row of the admin dashboard's live pipeline table.
  *
- * Kept separate from the Order entity so that changing the database schema
- * does not silently change the shape of the public API.
+ * Richer than {@link OrderResponse} because the admin view shows the internals
+ * a client has no business seeing: which saga step is running and how each of
+ * the three legacy systems replied. Kept as its own record so widening the
+ * admin view can never widen what a client's own order listing returns.
  */
-public record OrderResponse(
+public record AdminOrderResponse(
         Long id,
         String clientId,
         String recipientName,
@@ -18,13 +21,18 @@ public record OrderResponse(
         String status,
         String statusDetail,
         String sagaStep,
+        String cmsStatus,
+        String wmsStatus,
+        String rosStatus,
         String deliveryStatus,
         String deliveryStatusReason,
         Instant createdAt,
         Instant updatedAt) {
 
-    public static OrderResponse from(Order order) {
-        return new OrderResponse(
+    public static AdminOrderResponse from(Order order) {
+        SagaProgress progress = order.sagaProgress();
+
+        return new AdminOrderResponse(
                 order.getId(),
                 order.getClientId(),
                 order.getRecipientName(),
@@ -32,7 +40,10 @@ public record OrderResponse(
                 order.getPackageDescription(),
                 order.getStatus().name(),
                 order.getStatusDetail(),
-                order.sagaProgress().currentStep(),
+                progress.currentStep(),
+                progress.cms(),
+                progress.wms(),
+                progress.ros(),
                 order.getDeliveryStatus().name(),
                 order.getDeliveryStatusReason(),
                 order.getCreatedAt(),

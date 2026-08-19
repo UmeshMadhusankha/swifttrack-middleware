@@ -41,6 +41,30 @@ public class Order {
     /** Human-readable note about the current status, e.g. why it failed. */
     private String statusDetail;
 
+    /**
+     * Which saga step the orchestrator was on when it last announced a status,
+     * e.g. BILLING. Null for orders created before the orchestrator started
+     * sending it. Only ever copied from an event; never decided here.
+     */
+    private String sagaStep;
+
+    /**
+     * Set by a driver once the middleware has finished with the order.
+     *
+     * Nullable in the database on purpose: the column is added to a table that
+     * may already hold rows, and Postgres will not accept a NOT NULL column
+     * without a default on a populated table. Rows predating it read as
+     * PENDING_DELIVERY, which is what they were.
+     */
+    @Enumerated(EnumType.STRING)
+    private DeliveryStatus deliveryStatus;
+
+    /** Why a delivery failed, as chosen by the driver. Null unless it failed. */
+    private String deliveryStatusReason;
+
+    /** When a driver last touched the delivery status. Null until they do. */
+    private Instant deliveryUpdatedAt;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -57,6 +81,7 @@ public class Order {
         this.deliveryAddress = deliveryAddress;
         this.packageDescription = packageDescription;
         this.status = OrderStatus.PENDING;
+        this.deliveryStatus = DeliveryStatus.PENDING_DELIVERY;
         this.createdAt = Instant.now();
         this.updatedAt = this.createdAt;
     }
@@ -67,10 +92,32 @@ public class Order {
         return new Order(clientId, recipientName, deliveryAddress, packageDescription);
     }
 
-    public void changeStatus(OrderStatus newStatus, String detail) {
+    public void changeStatus(OrderStatus newStatus, String detail, String sagaStep) {
         this.status = newStatus;
         this.statusDetail = detail;
+        if (sagaStep != null && !sagaStep.isBlank()) {
+            this.sagaStep = sagaStep;
+        }
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Records what the driver found at the door.
+     *
+     * The reason is kept only for a failure. Carrying a stale "recipient not
+     * available" alongside a DELIVERED order would be actively misleading to
+     * whoever reads the row later.
+     */
+    public void recordDeliveryOutcome(DeliveryStatus newStatus, String reason) {
+        this.deliveryStatus = newStatus;
+        this.deliveryStatusReason = newStatus == DeliveryStatus.DELIVERY_FAILED ? reason : null;
+        this.deliveryUpdatedAt = Instant.now();
+        this.updatedAt = this.deliveryUpdatedAt;
+    }
+
+    /** How far through CMS, WMS and ROS this order has got. */
+    public SagaProgress sagaProgress() {
+        return SagaProgress.of(status, sagaStep);
     }
 
     public Long getId() {
@@ -99,6 +146,22 @@ public class Order {
 
     public String getStatusDetail() {
         return statusDetail;
+    }
+
+    public String getSagaStep() {
+        return sagaStep;
+    }
+
+    public DeliveryStatus getDeliveryStatus() {
+        return deliveryStatus == null ? DeliveryStatus.PENDING_DELIVERY : deliveryStatus;
+    }
+
+    public String getDeliveryStatusReason() {
+        return deliveryStatusReason;
+    }
+
+    public Instant getDeliveryUpdatedAt() {
+        return deliveryUpdatedAt;
     }
 
     public Instant getCreatedAt() {

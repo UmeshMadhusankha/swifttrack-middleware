@@ -175,9 +175,10 @@ services:
       - swifttrack
     restart: unless-stopped
 
-  # Checks credentials and issues JWTs. The API gateway will verify those
-  # tokens using the same JWT_SECRET, which is why the value is set here at the
-  # stack level rather than being baked into one service.
+  # Checks credentials and issues JWTs, and seeds the three demo accounts
+  # (admin / client / driver, all with password swift2026). The API gateway
+  # verifies those tokens using the same JWT_SECRET, which is why the value is
+  # set here at the stack level rather than being baked into one service.
   auth-service:
     build: ./auth-service
     container_name: swifttrack-auth-service
@@ -187,12 +188,6 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-swifttrack}
       JWT_SECRET: ${JWT_SECRET:-swifttrack-local-development-secret-key-change-me}
       JWT_EXPIRY_MINUTES: ${JWT_EXPIRY_MINUTES:-60}
-      SEED_USERNAME: ${SEED_USERNAME:-acme-corp}
-      SEED_PASSWORD: ${SEED_PASSWORD:-swift1234}
-      SEED_ROLE: ${SEED_ROLE:-CLIENT}
-      SEED_DRIVER_USERNAME: ${SEED_DRIVER_USERNAME:-driver-01}
-      SEED_DRIVER_PASSWORD: ${SEED_DRIVER_PASSWORD:-driver1234}
-      SEED_DRIVER_ROLE: ${SEED_DRIVER_ROLE:-DRIVER}
     depends_on:
       postgres:
         condition: service_healthy

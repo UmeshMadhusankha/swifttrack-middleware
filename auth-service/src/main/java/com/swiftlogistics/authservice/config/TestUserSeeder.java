@@ -2,73 +2,85 @@ package com.swiftlogistics.authservice.config;
 
 import com.swiftlogistics.authservice.domain.AppUser;
 import com.swiftlogistics.authservice.repository.AppUserRepository;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 /**
- * Creates the prototype's test accounts on startup.
+ * Creates the prototype's three demo accounts on startup: one per role.
  *
- * Runs every time the service boots but only inserts when an account is
- * missing, so restarting the container never fails on a duplicate username
- * and never quietly resets a password that was changed.
+ * Runs every time the service boots. Unlike a "create if missing" seeder this
+ * one re-applies the password and role every time, because the demo depends on
+ * these exact credentials working on a database that may already hold an older
+ * version of the same account. A real system would have a registration flow
+ * and nothing like this class.
  *
- * A real system would have a registration flow instead. These exist so there
- * is something to log in with on a fresh database, covering both the CLIENT
- * and DRIVER roles.
+ * Accounts from earlier versions of the prototype are removed so that exactly
+ * these three logins exist.
  */
 @Component
 public class TestUserSeeder implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(TestUserSeeder.class);
 
+    /** The demo password is shared by all three accounts on purpose: it is a prototype. */
+    private static final String DEMO_PASSWORD = "swift2026";
+
+    private static final List<SeedAccount> ACCOUNTS = List.of(
+            new SeedAccount("admin", DEMO_PASSWORD, "ADMIN"),
+            new SeedAccount("client", DEMO_PASSWORD, "CLIENT"),
+            new SeedAccount("driver", DEMO_PASSWORD, "DRIVER"));
+
+    /** Seed accounts from earlier builds, deleted so only the three above remain. */
+    private static final List<String> RETIRED_USERNAMES = List.of("acme-corp", "driver-01");
+
     private final AppUserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    // Client account
-    private final String clientUsername;
-    private final String clientPassword;
-    private final String clientRole;
-
-    // Driver account
-    private final String driverUsername;
-    private final String driverPassword;
-    private final String driverRole;
-
-    public TestUserSeeder(AppUserRepository userRepository,
-                          PasswordEncoder passwordEncoder,
-                          @Value("${auth.seed-user.username}") String clientUsername,
-                          @Value("${auth.seed-user.password}") String clientPassword,
-                          @Value("${auth.seed-user.role}") String clientRole,
-                          @Value("${auth.seed-driver.username}") String driverUsername,
-                          @Value("${auth.seed-driver.password}") String driverPassword,
-                          @Value("${auth.seed-driver.role}") String driverRole) {
+    public TestUserSeeder(AppUserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.clientUsername = clientUsername;
-        this.clientPassword = clientPassword;
-        this.clientRole = clientRole;
-        this.driverUsername = driverUsername;
-        this.driverPassword = driverPassword;
-        this.driverRole = driverRole;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        seedUser(clientUsername, clientPassword, clientRole);
-        seedUser(driverUsername, driverPassword, driverRole);
+        ACCOUNTS.forEach(this::seed);
+        RETIRED_USERNAMES.forEach(this::retire);
     }
 
-    private void seedUser(String username, String rawPassword, String role) {
-        if (userRepository.existsByUsername(username)) {
-            log.info("User '{}' already exists, leaving it alone", username);
-            return;
-        }
-        userRepository.save(AppUser.create(username, passwordEncoder.encode(rawPassword), role));
-        log.info("Seeded user '{}' with role {}", username, role);
+    private void seed(SeedAccount account) {
+        userRepository.findByUsername(account.username())
+                .ifPresentOrElse(
+                        existing -> {
+                            userRepository.delete(existing);
+                            userRepository.flush();
+                            insert(account);
+                            log.info("Re-seeded user '{}' with role {}", account.username(), account.role());
+                        },
+                        () -> {
+                            insert(account);
+                            log.info("Seeded user '{}' with role {}", account.username(), account.role());
+                        });
+    }
+
+    private void insert(SeedAccount account) {
+        userRepository.save(AppUser.create(
+                account.username(),
+                passwordEncoder.encode(account.password()),
+                account.role()));
+    }
+
+    private void retire(String username) {
+        userRepository.findByUsername(username).ifPresent(user -> {
+            userRepository.delete(user);
+            log.info("Removed retired prototype account '{}'", username);
+        });
+    }
+
+    private record SeedAccount(String username, String password, String role) {
     }
 }

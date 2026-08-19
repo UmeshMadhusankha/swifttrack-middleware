@@ -1,5 +1,6 @@
 package com.swiftlogistics.orderservice.service;
 
+import com.swiftlogistics.orderservice.domain.DeliveryStatus;
 import com.swiftlogistics.orderservice.domain.Order;
 import com.swiftlogistics.orderservice.domain.OrderStatus;
 import com.swiftlogistics.orderservice.messaging.OrderEventPublisher;
@@ -48,7 +49,7 @@ public class OrderService {
      * an order that has already reached its final state.
      */
     @Transactional
-    public void applyStatusUpdate(Long orderId, String statusName, String detail) {
+    public void applyStatusUpdate(Long orderId, String statusName, String detail, String sagaStep) {
         Optional<Order> found = orderRepository.findById(orderId);
         if (found.isEmpty()) {
             log.warn("Status update for unknown order {}, ignoring", orderId);
@@ -69,8 +70,8 @@ public class OrderService {
             return;
         }
 
-        order.changeStatus(newStatus, detail);
-        log.info("Order {} is now {}", orderId, newStatus);
+        order.changeStatus(newStatus, detail, sagaStep);
+        log.info("Order {} is now {} (saga step {})", orderId, newStatus, sagaStep);
     }
 
     @Transactional(readOnly = true)
@@ -79,11 +80,79 @@ public class OrderService {
     }
 
     /**
+     * Every order in the system, newest first. Admin use only.
+     *
+     * The caller's role is checked at the controller, which is the only place
+     * that can see it. Nothing here decides who is allowed to call it, so this
+     * method must never be reachable from a client-facing endpoint.
+     */
+    @Transactional(readOnly = true)
+    public List<Order> findAll() {
+        return orderRepository.findAllByOrderByCreatedAtDesc();
+    }
+
+    /**
+     * The orders a driver can act on: those the middleware has fully processed.
+     *
+     * Anything short of COMPLETED is still moving through CMS, WMS or ROS, or
+     * has failed outright. Handing those to a driver would send someone out
+     * with a parcel the warehouse has not reserved.
+     */
+    @Transactional(readOnly = true)
+    public List<Order> findReadyForDelivery() {
+        return orderRepository.findByStatusOrderByCreatedAtDesc(OrderStatus.COMPLETED);
+    }
+
+    /**
+     * Records what happened at the door.
+     *
+     * Written straight to the order row. There is no saga and no RabbitMQ
+     * message involved: this is the physical delivery, which happens after the
+     * middleware has finished, and no legacy system needs undoing if it fails.
+     *
+     * @throws IllegalArgumentException if the status is not a delivery status
+     * @throws IllegalStateException    if the middleware has not finished with the order
+     */
+    @Transactional
+    public Optional<Order> recordDeliveryOutcome(Long orderId, String statusName, String reason) {
+        DeliveryStatus newStatus;
+        try {
+            newStatus = DeliveryStatus.valueOf(statusName);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(
+                    "Unknown delivery status '" + statusName + "'");
+        }
+
+        if (newStatus == DeliveryStatus.PENDING_DELIVERY) {
+            throw new IllegalArgumentException(
+                    "A delivery can only be marked DELIVERED or DELIVERY_FAILED");
+        }
+
+        Optional<Order> found = orderRepository.findById(orderId);
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Order order = found.get();
+        if (order.getStatus() != OrderStatus.COMPLETED) {
+            throw new IllegalStateException(
+                    "Order " + orderId + " is " + order.getStatus()
+                            + " and has not finished processing yet");
+        }
+
+        order.recordDeliveryOutcome(newStatus, reason);
+        log.info("Order {} delivery marked {}{}", orderId, newStatus,
+                reason == null || reason.isBlank() ? "" : " (" + reason + ")");
+        return Optional.of(order);
+    }
+
+    /**
      * Every order belonging to one client.
      *
-     * There is deliberately no way to ask for "all orders". A single method
-     * that returns everything when its argument happens to be null is the kind
-     * of thing one forgetful caller turns into a data leak.
+     * Separate from {@link #findAll()} rather than being the same method with a
+     * nullable argument. One method that quietly returns everything when its
+     * argument happens to be null is the kind of thing a forgetful caller turns
+     * into a data leak.
      */
     @Transactional(readOnly = true)
     public List<Order> findForClient(String clientId) {

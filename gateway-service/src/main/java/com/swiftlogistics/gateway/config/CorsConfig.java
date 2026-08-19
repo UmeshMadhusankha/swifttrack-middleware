@@ -27,7 +27,9 @@ public class CorsConfig {
     public CorsWebFilter corsWebFilter(@Value("${gateway.allowed-origins}") String allowedOrigins) {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of(allowedOrigins.split(",")));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        // PATCH is here for the driver's delivery-status update. A method missing
+        // from this list fails at the preflight, before the request is even sent.
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setMaxAge(3600L);
 

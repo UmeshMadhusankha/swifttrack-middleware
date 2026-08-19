@@ -33,7 +33,7 @@ public class OrderStatusListener {
     @RabbitListener(queues = MessagingConstants.ORDER_STATUS_QUEUE)
     public void onOrderStatusChanged(OrderStatusChangedEvent event) {
         log.debug("Received status update {} for order {}", event.status(), event.orderId());
-        orderService.applyStatusUpdate(event.orderId(), event.status(), event.detail());
+        orderService.applyStatusUpdate(event.orderId(), event.status(), event.detail(), event.sagaStep());
         // Push to any browser watching this order over WebSocket.
         webSocketSessionManager.pushStatusUpdate(event.orderId(), event.status(), event.detail());
     }

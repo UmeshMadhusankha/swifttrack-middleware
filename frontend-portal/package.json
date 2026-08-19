@@ -2,7 +2,7 @@
   "name": "frontend-portal",
   "version": "1.0.0",
   "private": true,
-  "description": "SwiftLogistics client portal: log in, submit an order, watch it move",
+  "description": "SwiftTrack portal: role-based dashboards for clients, drivers and admins",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
@@ -12,5 +12,10 @@
     "next": "15.1.6",
     "react": "19.0.0",
     "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
   }
 }

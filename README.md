@@ -287,8 +287,9 @@ swifttrack-middleware/
 - Exposes `POST /api/auth/login` — exchanges `{ username, password }` for a signed JWT
 - Passwords are hashed with BCrypt (using `spring-security-crypto`, not the full Spring Security starter)
 - JWTs are signed with HMAC-SHA256 via JJWT library
-- Seeds a default test user on startup (configurable via env vars)
-- **Default credentials**: `acme-corp` / `swift1234`
+- Seeds three demo accounts on startup, one per role, re-applying them on every boot
+- Puts the account's `role` in the JWT, which the gateway forwards as `X-User-Role`
+- **Demo credentials**: `admin`, `client` and `driver`, all with password `swift2026`
 
 ### 3. Order Service
 
@@ -431,13 +432,19 @@ If you want to run individual services outside Docker:
 
    Navigate to [http://localhost:3000](http://localhost:3000) in your browser.
 
-5. **Log in with the default credentials**
+5. **Log in with one of the three demo accounts**
 
-   | Username | Password |
-   |----------|----------|
-   | `acme-corp` | `swift1234` |
+   Pick the matching role on the login screen; it fills the username in for you.
+   Where you land is decided by the `role` claim in the JWT, not by the picker.
 
-6. **Submit an order and watch it progress through all three legacy systems!**
+   | Username | Password | Lands on |
+   |----------|----------|----------|
+   | `client` | `swift2026` | `/dashboard/client` |
+   | `driver` | `swift2026` | `/dashboard/driver` |
+   | `admin` | `swift2026` | `/dashboard/admin` |
+
+6. **Submit an order from the client dashboard and watch the admin dashboard's
+   Live Order Pipeline walk it through all three legacy systems!**
 
 To stop:
 
@@ -507,10 +514,8 @@ All variables have sensible defaults for local development. Override them in a `
 
 ### Auth Service
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SEED_USERNAME` | `acme-corp` | Username of the auto-created test account |
-| `SEED_PASSWORD` | `swift1234` | Password of the auto-created test account |
+The three demo accounts are fixed in `TestUserSeeder` rather than being
+configurable, so the credentials in this README are always the ones that work.
 
 ### SAGA Orchestrator
 
@@ -557,8 +562,8 @@ No token required.
 **Request:**
 ```json
 {
-  "username": "acme-corp",
-  "password": "swift1234"
+  "username": "client",
+  "password": "swift2026"
 }
 ```
 
@@ -568,7 +573,7 @@ No token required.
   "token": "eyJhbGciOiJIUzI1NiJ9...",
   "tokenType": "Bearer",
   "expiresInSeconds": 3600,
-  "username": "acme-corp",
+  "username": "client",
   "role": "CLIENT"
 }
 ```
@@ -600,7 +605,7 @@ All order endpoints require `Authorization: Bearer <token>`.
 ```json
 {
   "id": 1,
-  "clientId": "acme-corp",
+  "clientId": "client",
   "recipientName": "Jane Doe",
   "deliveryAddress": "42 Elm Street, Springfield",
   "packageDescription": "2× fragile electronics",
@@ -617,7 +622,7 @@ All order endpoints require `Authorization: Bearer <token>`.
 ```json
 {
   "id": 1,
-  "clientId": "acme-corp",
+  "clientId": "client",
   "recipientName": "Jane Doe",
   "deliveryAddress": "42 Elm Street, Springfield",
   "packageDescription": "2× fragile electronics",
@@ -628,9 +633,59 @@ All order endpoints require `Authorization: Bearer <token>`.
 }
 ```
 
-#### `GET /api/orders?clientId=acme-corp`
+#### `GET /api/orders`
 
-Returns an array of `OrderResponse` objects.
+Returns an array of `OrderResponse` objects — only the caller's own orders. The
+client id comes from the gateway-set `X-Client-Id` header, never from a query
+parameter, so nobody can read another client's orders by asking for them.
+
+#### `GET /api/orders/all` — ADMIN only
+
+Every order in the system, newest first, as `AdminOrderResponse` objects. This
+is what the admin dashboard's Live Order Pipeline polls every three seconds.
+
+Returns `403` when the token's role is not `ADMIN`.
+
+```json
+[
+  {
+    "id": 15,
+    "clientId": "client",
+    "status": "BILLED",
+    "sagaStep": "STOCK_RESERVATION",
+    "cmsStatus": "COMPLETED",
+    "wmsStatus": "IN_PROGRESS",
+    "rosStatus": "PENDING",
+    "deliveryStatus": "PENDING_DELIVERY"
+  }
+]
+```
+
+`cmsStatus` / `wmsStatus` / `rosStatus` are each one of `PENDING`,
+`IN_PROGRESS`, `COMPLETED` or `FAILED`. They are worked out in the Order
+Service from the order's status plus the `sagaStep` the orchestrator puts on
+every status announcement — the Order Service cannot read the orchestrator's
+database, and that boundary is deliberate.
+
+#### `GET /api/orders/deliveries` — DRIVER only
+
+The driver's work list: orders whose saga reached `COMPLETED` and which are
+therefore ready to be physically delivered. Returns `403` for other roles.
+
+#### `PATCH /api/orders/{orderId}/delivery-status` — DRIVER only
+
+Records the outcome of a physical delivery, writing the order row directly. No
+RabbitMQ and no saga is involved: the middleware has already finished with the
+order, and a failed delivery does not need CMS, WMS or ROS unwound.
+
+```json
+{ "status": "DELIVERY_FAILED", "reason": "Recipient not available" }
+```
+
+`status` must be `DELIVERED` or `DELIVERY_FAILED`; `reason` is kept only for a
+failure. Returns `403` for other roles, `400` for an unknown status, `404` for
+an unknown order, and `409` if the middleware has not finished with the order
+yet.
 
 ---
 
