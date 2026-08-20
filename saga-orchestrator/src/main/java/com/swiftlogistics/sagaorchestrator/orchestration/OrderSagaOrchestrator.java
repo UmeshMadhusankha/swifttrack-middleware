@@ -13,6 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Drives an order through CMS, then WMS, then ROS, and undoes the work in
@@ -184,13 +186,13 @@ public class OrderSagaOrchestrator {
         if (next.isEmpty()) {
             saga.markCompleted();
             log.info("Order {}: saga completed, all three systems succeeded", saga.getOrderId());
-            messenger.announceOrderStatus(saga, "COMPLETED", "Order is ready for delivery");
+            sendAfterCommit(() -> messenger.announceOrderStatus(saga, "COMPLETED", "Order is ready for delivery"));
             return;
         }
 
         SagaStep step = next.get();
         saga.markStepInProgress(step);
-        messenger.sendStepCommand(saga, step);
+        sendAfterCommit(() -> messenger.sendStepCommand(saga, step));
     }
 
     /** Records the failure that stopped the saga, then starts unwinding. */
@@ -219,13 +221,13 @@ public class OrderSagaOrchestrator {
             saga.markCompensationFinished();
             log.warn("Order {}: saga finished as {} after compensation",
                     saga.getOrderId(), saga.getState());
-            messenger.announceOrderStatus(saga, "FAILED", saga.getFailureReason());
+            sendAfterCommit(() -> messenger.announceOrderStatus(saga, "FAILED", saga.getFailureReason()));
             return;
         }
 
         SagaStep step = toUndo.get();
         saga.markStepCompensating(step);
-        messenger.sendCompensationCommand(saga, step);
+        sendAfterCommit(() -> messenger.sendCompensationCommand(saga, step));
     }
 
     /** Turns the step name from a message back into an enum, tolerating rubbish. */
@@ -243,5 +245,15 @@ public class OrderSagaOrchestrator {
             log.error("Order {}: saga has no step {}, ignoring", saga.getOrderId(), type);
         }
         return step;
+    }
+
+    /** Delays RabbitMQ messaging until the database transaction is fully committed. */
+    private void sendAfterCommit(Runnable action) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 }
